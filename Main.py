@@ -21,7 +21,7 @@ for episode in range(num_episodes):
     done = False
 
     while not done:
-        env.check_dialogue()  # Check for NPC dialogue
+        env.check_state()
         valid_actions = env.get_valid_action_indices(state)
         action = agent.select_action_from_mask(state, valid_actions)
         print(f"Action: {env.actions_names[action]}")

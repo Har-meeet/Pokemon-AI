@@ -1,7 +1,11 @@
 import numpy as np
-from pyboy import PyBoy, WindowEvent
-from Reward_System import RewardManager  
-import time
+import matplotlib.pyplot as plt
+from pyboy import PyBoy, WindowEvent 
+from pathlib import Path
+
+from Reward_System import RewardManager 
+from image_processing.Dialogue_Classification import Dialogue_Classification
+from image_processing.Dialogue_Box_detection import dialogue_box_code
 
 class Emu:
     def __init__(self, game_path, state_path, window_type="SDL2", ticks=[50, 50]):
@@ -50,21 +54,30 @@ class Emu:
         }
         return release_mapping.get(action, None)
     
-    def check_dialogue(self):
-        """Detect if in NPC dialogue and press A until out of dialogue."""
-        def in_dialogue():
-            # Memory flag for dialogue box open — usually at 0xCFC5
-            # 1 means in dialogue, 0 means not
-            print(self.pyboy.get_memory_value(0xCFC5))
-            return self.pyboy.get_memory_value(0xCFC5) == 1
+    def in_dialogue_box(self, turn):
 
-        if in_dialogue():
-            print("NPC dialogue detected. Auto-advancing...")
-        while in_dialogue():
-            self.press_button(WindowEvent.PRESS_BUTTON_A)
+        # Capture the bottom 24 pixels (dialogue region)
+        screen = self.pyboy.botsupport_manager().screen().screen_ndarray()
 
+        dialogue_box_code_hash = dialogue_box_code(screen, turn)
+        if dialogue_box_code_hash == 0:
+            return False
+        
+        if dialogue_box_code_hash == 1:
+            return True
+        
+        self.RewardManager.exploration_reward.visited_dialogues.add(dialogue_box_code_hash)
+
+        return True
     
-    def get_state(self):
+    def check_state(self):
+        i = 0
+        while self.in_dialogue_box(i):
+            print("In dialogue... pressing A")
+            self.press_button(WindowEvent.PRESS_BUTTON_A)
+            i += 1
+
+    def get_vals(self):
         x = self.pyboy.get_memory_value(0xD362)
         y = self.pyboy.get_memory_value(0xD361)
         hp = self.pyboy.get_memory_value(0xD16D)
@@ -86,10 +99,10 @@ class Emu:
 
         reward = self.RewardManager.calculate_total_reward()
         done = self.pyboy.get_memory_value(0xD22E) == 1
-        state = self.get_state()
-        print(f"State: X={state[0]}, Y={state[1]}, HP={state[2]}, Money={state[3]}, Reward={reward}")
+        vals = self.get_vals()
+        print(f"State: X={vals[0]}, Y={vals[1]}, HP={vals[2]}, Money={vals[3]}, Reward={reward}")
 
-        return state, reward, done
+        return vals, reward, done
 
     def get_valid_action_indices(self, state):
         """Define your condition logic here to mask buttons like B, START, SELECT."""
@@ -112,7 +125,21 @@ class Emu:
     def reset(self):
         with open("Pokemon-Game\\Starting.state", "rb") as f:
             self.pyboy.load_state(f)
-        return self.get_state()
+        return self.get_vals()
 
     def close(self):
         self.pyboy.stop()
+
+    def save_screen(self, filename):
+
+        screen = self.pyboy.botsupport_manager().screen().screen_ndarray()
+        
+        # Create the screenshots directory if it doesn't exist
+        screenshots_dir = Path("screenshots")
+        screenshots_dir.mkdir(exist_ok=True)
+        
+        # Save the screen
+        filepath = screenshots_dir / filename
+        plt.imsave(filepath, screen)
+        
+        print(f"Screen saved as {filepath}")

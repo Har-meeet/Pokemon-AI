@@ -66,8 +66,10 @@ class ExplorationReward(Reward):
     def __init__(self, pyboy: PyBoy):
         super().__init__(pyboy)
         self.visited_positions = {}
-        self.visited_npcs = set()
+        self.visited_dialogues = set()
+        self.prev_visited_dialogues_length = 0
         self.visited_maps = set()
+        self.visited_maps.add(0)
         self.previous_position = None
         self.previous_map = None
 
@@ -79,9 +81,13 @@ class ExplorationReward(Reward):
     def get_map_id(self):
         return self.pyboy.get_memory_value(0xD35E)
 
-    def get_npc_id(self):
+    def check_new_dialogue(self):
         """Simulated function to read NPC ID from memory"""
-        return self.pyboy.get_memory_value(0xD400)  # Example address
+        if len(self.visited_dialogues) < self.prev_visited_dialogues_length:
+            self.prev_visited_dialogues_length = len(self.visited_dialogues)
+            return True
+
+        return False
 
     def calculate_reward(self):
         reward = 0
@@ -94,11 +100,10 @@ class ExplorationReward(Reward):
             reward += 100
             self.visited_maps.add(current_map)
 
-        # New NPC Interaction
-        npc_id = self.get_npc_id()
-        if npc_id and npc_id not in self.visited_npcs:
-            print("New NPC interaction! +100 points")
-            self.visited_npcs.add(npc_id)
+        # New Dialogue
+        new_dialogue = self.check_new_dialogue()
+        if new_dialogue:
+            print("New Dialogue! +100 points")
             reward += 100
 
         # Backtracking
